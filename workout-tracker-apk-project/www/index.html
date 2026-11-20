@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Workout Tracker</title>
+<style>
+:root{--bg:#f5f5f2;--card:#fff;--text:#1c1c1a;--muted:#6f6f6a;--accent:#e4572e;--accent-t:#fff;--line:#e2e2dc;--good:#2e9e5b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--card:#222220;--text:#f2f2ee;--muted:#9a9a93;--line:#34342f;--good:#4cc582;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#161615;--card:#222220;--text:#f2f2ee;--muted:#9a9a93;--line:#34342f;--good:#4cc582;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+main{max-width:480px;margin:0 auto;padding:16px 16px 40px}
+h1{font-size:24px;margin:8px 0 2px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ex{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:left;color:var(--text);font:inherit;cursor:pointer;min-height:84px;display:flex;flex-direction:column;justify-content:space-between}
+.ex b{font-size:16px}
+.ex small{color:var(--muted);font-size:12px;margin-top:6px}
+.ex.done{border-color:var(--good)}
+.ex.done small{color:var(--good)}
+.add{display:flex;gap:8px;margin-top:18px}
+input{flex:1;min-width:0;font:inherit;font-size:16px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text)}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--accent);color:var(--accent-t);border:0;border-radius:12px;padding:12px 16px;font-weight:600}
+.back{background:none;border:0;color:var(--accent);padding:8px 0;font-size:16px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:12px}
+.lbl{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.big{font-size:88px;font-weight:700;text-align:center;line-height:1;margin:14px 0}
+.row{display:flex;gap:10px}
+.row button{flex:1}
+.plus{background:var(--accent);color:var(--accent-t);border:0;border-radius:16px;font-size:34px;font-weight:700;height:84px;flex:2!important}
+.minus{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:16px;font-size:28px;height:84px}
+.fin{width:100%;margin-top:10px;background:var(--text);color:var(--bg);border:0;border-radius:14px;padding:14px;font-weight:600;font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:14px}
+.chip button{background:none;border:0;color:var(--muted);margin-left:4px;padding:0}
+.msg{margin-top:10px;font-weight:600}
+.msg.good{color:var(--good)}
+.del{background:none;border:0;color:var(--muted);font-size:13px;margin-top:20px;text-decoration:underline}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const PRESETS=["Push-ups","Pull-ups","Squats","Sit-ups","Dips","Lunges","Bicep Curls","Shoulder Press","Bench Press","Deadlifts"];
+const KEY="wt_state_v1";
+let S={custom:[],logs:{},updated:0};
+let view="home",sel=null,cur=0,doc=null,saveT=null;
+
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ymd=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const today=()=>ymd(new Date());
+const nice=d=>{const [y,m,dd]=d.split("-").map(Number);return new Date(y,m-1,dd).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})};
+const sum=a=>a.reduce((x,y)=>x+y,0);
+
+try{const r=localStorage.getItem(KEY);if(r)S=JSON.parse(r)}catch(e){}
+
+function entry(n,d){return (S.logs[n]||[]).find(e=>e.d===d)}
+function last(n){const t=today();return (S.logs[n]||[]).filter(e=>e.d<t&&e.sets.length).sort((a,b)=>b.d.localeCompare(a.d))[0]}
+function save(){
+  S.updated=Date.now();
+  try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+  clearTimeout(saveT);
+  saveT=setTimeout(()=>{if(doc)doc.set({json:JSON.stringify(S)}).catch(()=>{})},600);
+}
+
+function home(){
+  const all=[...PRESETS,...S.custom.filter(c=>!PRESETS.includes(c))];
+  const cards=all.map(n=>{
+    const t=entry(n,today()),l=last(n);
+    const note=t&&t.sets.length?`Today: ${sum(t.sets)} reps ✓`:l?`Last: ${sum(l.sets)} reps`:"No history yet";
+    return `<button class="ex ${t&&t.sets.length?"done":""}" data-act="open" data-n="${esc(n)}"><b>${esc(n)}</b><small>${note}</small></button>`;
+  }).join("");
+  return `<h1>Today’s workout</h1><p class="sub">Pick an exercise to start counting.</p>
+  <div class="grid">${cards}</div>
+  <div class="add"><input id="newex" placeholder="Add your own exercise…" maxlength="40"><button class="btn" data-act="addex">Add</button></div>`;
+}
+
+function tracker(){
+  const n=sel,t=entry(n,today()),sets=t?t.sets:[],l=last(n),tot=sum(sets);
+  let lastHtml=`<div class="lbl">Last time</div><p style="margin:6px 0 0;color:var(--muted)">No previous session yet. Set your first benchmark today.</p>`;
+  if(l)lastHtml=`<div class="lbl">Last time · ${nice(l.d)}</div><div style="font-size:22px;font-weight:700;margin-top:4px">${sum(l.sets)} total reps</div><div class="chips">${l.sets.map((r,i)=>`<span class="chip">Set ${i+1}: ${r}</span>`).join("")}</div>`;
+  let msg="";
+  if(l&&tot>0){const goal=sum(l.sets);msg=tot>goal?`<div class="msg good">New record: ${tot-goal} more than last time! 🔥</div>`:tot===goal?`<div class="msg good">Tied last time. One more rep to beat it.</div>`:`<div class="msg">${goal-tot+1} more reps to beat last time.</div>`}
+  return `<button class="back" data-act="home">‹ All exercises</button><h1>${esc(n)}</h1>
+  <div class="panel">${lastHtml}</div>
+  <div class="panel"><div class="lbl">Current set</div><div class="big">${cur}</div>
+  <div class="row"><button class="minus" data-act="dec">−</button><button class="plus" data-act="inc">+1</button></div>
+  <button class="fin" data-act="finish">Finish set${cur?` (${cur})`:""}</button></div>
+  <div class="panel"><div class="lbl">Today · ${tot} total reps</div>
+  <div class="chips">${sets.length?sets.map((r,i)=>`<span class="chip">Set ${i+1}: ${r}<button data-act="rmset" data-i="${i}" aria-label="Remove set">×</button></span>`).join(""):`<span style="color:var(--muted);font-size:14px">No sets logged yet.</span>`}</div>${msg}</div>`;
+}
+
+function render(){document.getElementById("app").innerHTML=view==="home"?home():tracker()}
+
+function addEx(){
+  const el=document.getElementById("newex");const v=el.value.trim();
+  if(!v)return;
+  const all=[...PRESETS,...S.custom];
+  const ex=all.find(x=>x.toLowerCase()===v.toLowerCase());
+  if(!ex){S.custom.push(v);save()}
+  open(ex||v);
+}
+function open(n){sel=n;cur=0;view="tracker";render();window.scrollTo(0,0)}
+
+document.getElementById("app").addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");if(!b)return;
+  const a=b.dataset.act;
+  if(a==="open")open(b.dataset.n);
+  else if(a==="home"){view="home";render()}
+  else if(a==="addex")addEx();
+  else if(a==="inc"){cur++;render()}
+  else if(a==="dec"){cur=Math.max(0,cur-1);render()}
+  else if(a==="finish"){
+    if(!cur)return;
+    let t=entry(sel,today());
+    if(!t){t={d:today(),sets:[]};(S.logs[sel]=S.logs[sel]||[]).push(t)}
+    t.sets.push(cur);cur=0;save();render();
+  }
+  else if(a==="rmset"){const t=entry(sel,today());if(t){t.sets.splice(+b.dataset.i,1);save();render()}}
+});
+document.getElementById("app").addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="newex")addEx()});
+
+render();
+
+</script>
+</body>
+</html>
